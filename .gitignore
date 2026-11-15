@@ -1,0 +1,27 @@
+ Archivos de compilacion
+build/
+
+# Configuracion local de ESP-IDF
+sdkconfig
+sdkconfig.old
+
+# Componentes descargados automaticamente
+managed_components/
+
+# Archivos temporales
+*.o
+*.a
+*.pyc
+__pycache__/
+
+# Archivos de editores
+.vscode/
+
+
+# Logs
+*.log
+
+# Claves privadas y credenciales
+*.key
+*.p12
+*.pfx
