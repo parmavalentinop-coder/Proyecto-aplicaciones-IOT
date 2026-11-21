@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <string.h>
+
+
 
 /*Driver sensor de temperatura*/
 #include "driver/ds18b20_example.c"
@@ -34,6 +37,23 @@
 
 static EventGroupHandle_t wifi_event_group = NULL;
 
+/* Credenciales recibidas desde el formulario */
+char wifi_ssid[32];
+char wifi_password[64];
+
+/* Notificar que llegaron las credenciales */
+void notify_wifi_credentials(const char *ssid, const char *password)
+{
+    strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
+    wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+
+    strncpy(wifi_password, password, sizeof(wifi_password) - 1);
+    wifi_password[sizeof(wifi_password) - 1] = '\0';
+
+    xEventGroupSetBits(wifi_event_group, WIFI_CREDENTIALS_READY);
+}
+
+/*esperar credenciales*/
 
 void wait_for_wifi_credentials(void)
 {
@@ -70,7 +90,7 @@ void app_main(void)
     wait_for_wifi_credentials();
 
 
-    // wifi_init_sta( SSID ,  PASSWORD );
+    wifi_init_sta(wifi_password, wifi_ssid);
 
    //ds18b20_example_run(DS18B20_GPIO,DS18B20_READ_INTERVAL_MS);
 

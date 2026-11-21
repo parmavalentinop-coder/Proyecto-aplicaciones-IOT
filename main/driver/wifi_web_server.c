@@ -4,6 +4,9 @@
 #include "esp_http_server.h"
 #include "esp_log.h"
 
+
+void notify_wifi_credentials(const char *ssid, const char *password);
+
 // Archivo HTML embebido
 extern const uint8_t index_html_start[]
     asm("_binary_index_html_start");
@@ -30,13 +33,14 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     );
 }
 
-    // Manejador para recibir las credenciales WiFi
+// Manejador para recibir las credenciales WiFi
 static esp_err_t wifi_post_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG_WEB_SERVER, "Solicitud POST recibida en /wifi");
 
     char content[128];
 
+    // Recibir el contenido del formulario
     int ret = httpd_req_recv(req, content, sizeof(content) - 1);
 
     if (ret <= 0) {
@@ -46,9 +50,30 @@ static esp_err_t wifi_post_handler(httpd_req_t *req)
 
     content[ret] = '\0';
 
-    ESP_LOGI(TAG_WEB_SERVER, "Datos recibidos: %s", content);
+    ESP_LOGI(TAG_WEB_SERVER, "Datos recibidos correctamente");
 
-    httpd_resp_sendstr(req, "Credenciales recibidas");
+    // Variables para almacenar las credenciales
+    char ssid[32] = {0};
+    char password[64] = {0};
+
+    // Extraer SSID y contraseña
+    if (httpd_query_key_value(content, "ssid", ssid, sizeof(ssid)) != ESP_OK ||
+        httpd_query_key_value(content, "password", password, sizeof(password)) != ESP_OK) {
+
+        ESP_LOGE(TAG_WEB_SERVER, "No se pudieron obtener las credenciales");
+
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "Credenciales invalidas");
+
+        return ESP_FAIL;
+    }
+
+    // Notificar a main.c que llegaron las credenciales
+    notify_wifi_credentials(ssid, password);
+
+    ESP_LOGI(TAG_WEB_SERVER, "Credenciales recibidas y notificadas");
+
+    httpd_resp_sendstr(req, "Credenciales recibidas. El ESP32 intentara conectarse.");
 
     return ESP_OK;
 }
@@ -80,7 +105,7 @@ void start_web_server(void)
 
         httpd_register_uri_handler(server, &wifi);
 
-        ESP_LOGI(TAG, "Servidor HTTP iniciado");
+        ESP_LOGI(TAG_WEB_SERVER, "Servidor HTTP iniciado");
         ESP_LOGI(TAG_WEB_SERVER, "Accede al formulario desde: http://192.168.4.1");
     }
     else {
