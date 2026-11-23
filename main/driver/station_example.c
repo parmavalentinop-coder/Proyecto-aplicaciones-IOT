@@ -9,6 +9,8 @@
 #include "esp_netif.h"
 #include "esp_err.h"
 
+#include <stdbool.h>
+
 
 /* Grupo de eventos de la conexion STA */
 static EventGroupHandle_t s_wifi_event_group;
@@ -22,6 +24,20 @@ static const char *TAG_wifi = "WIFI_STA";
 
 static int s_retry_num = 0;
 
+static esp_netif_t *sta_netif = NULL;
+
+static bool sta_initialized = false;
+
+static bool intentional_disconnect = false;
+
+static esp_event_handler_instance_t instance_any_id;
+static esp_event_handler_instance_t instance_got_ip;
+
+void set_intentional_disconnect(bool state)
+{
+    intentional_disconnect = state;
+}
+
 extern void notify_wifi_disconnected(void);
 
 /* Manejador de eventos WiFi */
@@ -31,27 +47,33 @@ static void event_handler(void *arg,
                           void *event_data)
 {
     if (event_base == WIFI_EVENT &&
-        event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    event_id == WIFI_EVENT_STA_DISCONNECTED) {
 
-        if (s_retry_num < WIFI_MAXIMUM_RETRY) {
+    /* Ignorar desconexiones provocadas por un cambio de modo */
+    if (intentional_disconnect) {
+        ESP_LOGI(TAG_wifi, "Desconexion intencional");
+        return;
+    }
 
-            esp_wifi_connect();
-            s_retry_num++;
+    if (s_retry_num < WIFI_MAXIMUM_RETRY) {
 
-            ESP_LOGI(TAG_wifi, "Reintentando conexion WiFi...");
+        esp_wifi_connect();
+        s_retry_num++;
 
-        } else {
+        ESP_LOGI(TAG_wifi, "Reintentando conexion WiFi...");
 
-            ESP_LOGE(TAG_wifi, "No se pudo conectar al router");
+    } else {
 
-            xEventGroupSetBits(
+        ESP_LOGE(TAG_wifi, "No se pudo conectar al router");
+
+        xEventGroupSetBits(
             s_wifi_event_group,
             WIFI_FAIL_BIT
-    );
+        );
 
-    notify_wifi_disconnected();
-}
+        notify_wifi_disconnected();
     }
+}
 
     else if (event_base == IP_EVENT &&
              event_id == IP_EVENT_STA_GOT_IP) {
@@ -77,49 +99,60 @@ esp_err_t wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
 {
     ESP_LOGI(TAG_wifi, "Configurando conexion WiFi STA...");
 
-    /* Crear grupo de eventos */
-    s_wifi_event_group = xEventGroupCreate();
+    /* Inicializar recursos STA solamente la primera vez */
+    if (!sta_initialized) {
 
-    if (s_wifi_event_group == NULL) {
-        ESP_LOGE(TAG_wifi, "Error al crear grupo de eventos");
-        return ESP_FAIL;
+        /* Crear grupo de eventos */
+        s_wifi_event_group = xEventGroupCreate();
+
+        if (s_wifi_event_group == NULL) {
+            ESP_LOGE(TAG_wifi, "Error al crear grupo de eventos");
+            return ESP_FAIL;
+        }
+
+        /* Crear interfaz de estacion */
+        sta_netif = esp_netif_create_default_wifi_sta();
+
+        if (sta_netif == NULL) {
+            ESP_LOGE(TAG_wifi, "Error al crear interfaz STA");
+            return ESP_FAIL;
+        }
+
+        /* Registrar eventos WiFi */
+        ESP_ERROR_CHECK(
+            esp_event_handler_instance_register(
+                WIFI_EVENT,
+                ESP_EVENT_ANY_ID,
+                &event_handler,
+                NULL,
+                &instance_any_id
+            )
+        );
+
+        ESP_ERROR_CHECK(
+            esp_event_handler_instance_register(
+                IP_EVENT,
+                IP_EVENT_STA_GOT_IP,
+                &event_handler,
+                NULL,
+                &instance_got_ip
+            )
+        );
+
+        sta_initialized = true;
     }
 
-    /*
-     * El AP ya inicializo:
-     * - esp_netif
-     * - event loop
-     * - driver WiFi
-     *
-     * 
-     */
-
-    /* Crear interfaz de estacion */
-    esp_netif_create_default_wifi_sta();
-
-    /* Registrar eventos WiFi */
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-
-    ESP_ERROR_CHECK(
-        esp_event_handler_instance_register(
-            WIFI_EVENT,
-            ESP_EVENT_ANY_ID,
-            &event_handler,
-            NULL,
-            &instance_any_id
-        )
+    /* Limpiar eventos de intentos anteriores */
+    xEventGroupClearBits(
+        s_wifi_event_group,
+        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT
     );
 
-    ESP_ERROR_CHECK(
-        esp_event_handler_instance_register(
-            IP_EVENT,
-            IP_EVENT_STA_GOT_IP,
-            &event_handler,
-            NULL,
-            &instance_got_ip
-        )
-    );
+    /* Reiniciar contador de reintentos */
+    s_retry_num = 0;
+
+    /* Volver a habilitar la deteccion de desconexiones */
+    intentional_disconnect = false;
 
     /* Configurar credenciales */
     wifi_config_t wifi_config = {0};
@@ -136,7 +169,7 @@ esp_err_t wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
         sizeof(wifi_config.sta.password) - 1
     );
 
-    /* Cambiar de Access Point a Station */
+    /* Cambiar a modo Station */
     ESP_ERROR_CHECK(
         esp_wifi_set_mode(WIFI_MODE_STA)
     );
@@ -148,33 +181,30 @@ esp_err_t wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
 
     ESP_LOGI(TAG_wifi, "Intentando conectar a: %s", wifi_ssid);
 
-    /* El driver ya estaba iniciado por el AP */
+    /* Iniciar conexion */
     ESP_ERROR_CHECK(
         esp_wifi_connect()
     );
 
     /* Esperar conexion o fallo */
     EventBits_t bits = xEventGroupWaitBits(
-    s_wifi_event_group,
-    WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-    pdFALSE,
-    pdFALSE,
-    pdMS_TO_TICKS(15000)
-);
+        s_wifi_event_group,
+        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+        pdTRUE,
+        pdFALSE,
+        pdMS_TO_TICKS(15000)
+    );
 
     if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG_wifi, "Conexion WiFi exitosa");
+        return ESP_OK;
+    }
 
-    ESP_LOGI(TAG_wifi, "Conexion WiFi exitosa");
-    return ESP_OK;
+    if (bits & WIFI_FAIL_BIT) {
+        ESP_LOGE(TAG_wifi, "Fallo la conexion WiFi");
+    } else {
+        ESP_LOGE(TAG_wifi, "Tiempo de conexion agotado");
+    }
 
-} else if (bits & WIFI_FAIL_BIT) {
-
-    ESP_LOGE(TAG_wifi, "Fallo la conexion WiFi");
-
-} else {
-
-    ESP_LOGE(TAG_wifi, "Tiempo de conexion agotado");
-}
-
-return ESP_FAIL;
+    return ESP_FAIL;
 }

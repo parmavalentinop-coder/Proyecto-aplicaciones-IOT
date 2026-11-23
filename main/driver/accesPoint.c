@@ -54,9 +54,14 @@ void wifi_init_ap(const char *ap_ssid, const char *ap_pass)
     ESP_LOGI(TAG, "IP: 192.168.4.1");
 }
 
+extern void set_intentional_disconnect(bool state);
+
 void wifi_start_ap(const char *ap_ssid, const char *ap_pass)
 {
     wifi_config_t wifi_config = {0};
+
+    /* Indicar que el cambio de modo es intencional */
+    set_intentional_disconnect(true);
 
     strncpy((char *)wifi_config.ap.ssid,
             ap_ssid, sizeof(wifi_config.ap.ssid) - 1);
