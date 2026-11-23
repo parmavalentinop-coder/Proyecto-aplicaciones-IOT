@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-
+#include "driver/wifi_storage.c"
 
 /*Driver sensor de temperatura*/
 #include "driver/ds18b20_example.c"
@@ -74,12 +74,63 @@ void wait_for_wifi_credentials(void)
 void app_main(void)
 {
 
+    esp_err_t err = wifi_storage_init();
+
+     if (err != ESP_OK) {
+        ESP_LOGE("MAIN", "No se pudo inicializar el almacenamiento");
+        return;
+}
+/* Intentar recuperar las credenciales guardadas */
+    err = wifi_credentials_load(
+    wifi_ssid,
+    sizeof(wifi_ssid),
+    wifi_password,
+    sizeof(wifi_password)
+);
+
+    if (err == ESP_OK) {
+    ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
+    } else {
+    ESP_LOGI("MAIN", "No hay credenciales WiFi guardadas");
+}
+
     wifi_event_group = xEventGroupCreate();
 
     if (wifi_event_group == NULL) {
         ESP_LOGE("WIFI", "Error al crear grupo de eventos");
         return;
     }
+
+    if (err == ESP_OK) {
+
+    ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
+
+    /* Inicializar la infraestructura WiFi */
+    wifi_init_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+    /* Intentar conectar usando las credenciales guardadas */
+    err = wifi_init_sta(wifi_password, wifi_ssid);
+
+    if (err != ESP_OK) {
+
+        ESP_LOGW("MAIN", "No se pudo conectar. Iniciando modo configuracion");
+
+        /* Volver al modo Access Point */
+        wifi_start_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+        /* Levantar servidor web */
+        start_web_server();
+
+        /* Esperar nuevas credenciales */
+        wait_for_wifi_credentials();
+
+        /* Intentar conectar con las nuevas credenciales */
+        wifi_init_sta(wifi_password, wifi_ssid);
+    }
+
+} else {
+
+        ESP_LOGI("MAIN", "No hay credenciales WiFi guardadas");
 
      wifi_init_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
 
@@ -95,6 +146,6 @@ void app_main(void)
    //ds18b20_example_run(DS18B20_GPIO,DS18B20_READ_INTERVAL_MS);
 
     
-
+    }
 
 }

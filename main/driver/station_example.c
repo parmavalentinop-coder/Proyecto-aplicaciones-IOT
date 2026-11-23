@@ -7,6 +7,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_err.h"
 
 
 /* Grupo de eventos de la conexion STA */
@@ -15,7 +16,7 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
-#define WIFI_MAXIMUM_RETRY 5
+#define WIFI_MAXIMUM_RETRY 3
 
 static const char *TAG_wifi = "WIFI_STA";
 
@@ -69,7 +70,7 @@ static void event_handler(void *arg,
 
 
 /* Inicializacion de la estacion WiFi */
-void wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
+esp_err_t wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
 {
     ESP_LOGI(TAG_wifi, "Configurando conexion WiFi STA...");
 
@@ -78,7 +79,7 @@ void wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
 
     if (s_wifi_event_group == NULL) {
         ESP_LOGE(TAG_wifi, "Error al crear grupo de eventos");
-        return;
+        return ESP_FAIL;
     }
 
     /*
@@ -151,23 +152,26 @@ void wifi_init_sta(const char *wifi_pass, const char *wifi_ssid)
 
     /* Esperar conexion o fallo */
     EventBits_t bits = xEventGroupWaitBits(
-        s_wifi_event_group,
-        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-        pdFALSE,
-        pdFALSE,
-        portMAX_DELAY
-    );
+    s_wifi_event_group,
+    WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+    pdFALSE,
+    pdFALSE,
+    pdMS_TO_TICKS(15000)
+);
 
     if (bits & WIFI_CONNECTED_BIT) {
 
-        ESP_LOGI(TAG_wifi, "Conexion WiFi exitosa");
+    ESP_LOGI(TAG_wifi, "Conexion WiFi exitosa");
+    return ESP_OK;
 
-    } else if (bits & WIFI_FAIL_BIT) {
+} else if (bits & WIFI_FAIL_BIT) {
 
-        ESP_LOGE(TAG_wifi, "Fallo la conexion WiFi");
+    ESP_LOGE(TAG_wifi, "Fallo la conexion WiFi");
 
-    } else {
+} else {
 
-        ESP_LOGE(TAG_wifi, "Evento inesperado");
-    }
+    ESP_LOGE(TAG_wifi, "Tiempo de conexion agotado");
+}
+
+return ESP_FAIL;
 }
