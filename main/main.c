@@ -35,6 +35,8 @@
 /*Evento Para esperar las credenciales de wifi*/
 #define WIFI_CREDENTIALS_READY BIT0
 
+#define WIFI_DISCONNECTED_BIT BIT1
+
 static EventGroupHandle_t wifi_event_group = NULL;
 
 /* Credenciales recibidas desde el formulario */
@@ -51,6 +53,14 @@ void notify_wifi_credentials(const char *ssid, const char *password)
     wifi_password[sizeof(wifi_password) - 1] = '\0';
 
     xEventGroupSetBits(wifi_event_group, WIFI_CREDENTIALS_READY);
+}
+
+void notify_wifi_disconnected(void)
+{
+    xEventGroupSetBits(
+        wifi_event_group,
+        WIFI_DISCONNECTED_BIT
+    );
 }
 
 /*esperar credenciales*/
@@ -71,81 +81,94 @@ void wait_for_wifi_credentials(void)
     ESP_LOGI("WIFI", "Credenciales recibidas");
 }
 
+void start_wifi_configuration(void)
+{
+    ESP_LOGW("MAIN", "Iniciando modo configuracion");
+
+    /* Volver al modo Access Point */
+    wifi_start_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+
+    /* Levantar servidor web */
+    start_web_server();
+
+    /* Esperar nuevas credenciales */
+    wait_for_wifi_credentials();
+
+    /* Limpiar evento de credenciales recibidas */
+    xEventGroupClearBits(
+        wifi_event_group,
+        WIFI_CREDENTIALS_READY
+    );
+
+    /* Intentar conectar con las nuevas credenciales */
+    wifi_init_sta(wifi_password, wifi_ssid);
+}
+
+
 void app_main(void)
 {
-
     esp_err_t err = wifi_storage_init();
 
-     if (err != ESP_OK) {
+    if (err != ESP_OK) {
         ESP_LOGE("MAIN", "No se pudo inicializar el almacenamiento");
         return;
-}
-/* Intentar recuperar las credenciales guardadas */
+    }
+
+    /* Recuperar credenciales guardadas */
     err = wifi_credentials_load(
-    wifi_ssid,
-    sizeof(wifi_ssid),
-    wifi_password,
-    sizeof(wifi_password)
-);
+        wifi_ssid,
+        sizeof(wifi_ssid),
+        wifi_password,
+        sizeof(wifi_password)
+    );
 
-    if (err == ESP_OK) {
-    ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
-    } else {
-    ESP_LOGI("MAIN", "No hay credenciales WiFi guardadas");
-}
-
+    /* Crear grupo de eventos */
     wifi_event_group = xEventGroupCreate();
 
     if (wifi_event_group == NULL) {
-        ESP_LOGE("WIFI", "Error al crear grupo de eventos");
+        ESP_LOGE("MAIN", "Error al crear grupo de eventos");
         return;
     }
 
-    if (err == ESP_OK) {
-
-    ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
-
-    /* Inicializar la infraestructura WiFi */
+    /* Inicializar infraestructura WiFi */
     wifi_init_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
 
-    /* Intentar conectar usando las credenciales guardadas */
-    err = wifi_init_sta(wifi_password, wifi_ssid);
+    if (err == ESP_OK) {
+        ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
 
-    if (err != ESP_OK) {
-
-        ESP_LOGW("MAIN", "No se pudo conectar. Iniciando modo configuracion");
-
-        /* Volver al modo Access Point */
-        wifi_start_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-
-        /* Levantar servidor web */
-        start_web_server();
-
-        /* Esperar nuevas credenciales */
-        wait_for_wifi_credentials();
-
-        /* Intentar conectar con las nuevas credenciales */
-        wifi_init_sta(wifi_password, wifi_ssid);
-    }
-
-} else {
-
+        err = wifi_init_sta(wifi_password, wifi_ssid);
+    } else {
         ESP_LOGI("MAIN", "No hay credenciales WiFi guardadas");
-
-     wifi_init_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-
-
-     start_web_server();
-
-     /*Espero las credenciales*/
-    wait_for_wifi_credentials();
-
-
-    wifi_init_sta(wifi_password, wifi_ssid);
-
-   //ds18b20_example_run(DS18B20_GPIO,DS18B20_READ_INTERVAL_MS);
-
-    
+        err = ESP_FAIL;
     }
 
+    /* Si no pudo conectarse, iniciar configuracion */
+    if (err != ESP_OK) {
+        start_wifi_configuration();
+    }
+
+    /* Mantener el programa escuchando eventos */
+    while (1) {
+
+        EventBits_t bits = xEventGroupWaitBits(
+            wifi_event_group,
+            WIFI_DISCONNECTED_BIT,
+            pdTRUE,
+            pdFALSE,
+            portMAX_DELAY
+        );
+
+        if (bits & WIFI_DISCONNECTED_BIT) {
+
+            ESP_LOGW("MAIN", "Se perdio la conexion WiFi");
+
+            /* Limpiar evento de desconexion */
+            xEventGroupClearBits(
+                wifi_event_group,
+                WIFI_DISCONNECTED_BIT
+            );
+
+            start_wifi_configuration();
+        }
+    }
 }

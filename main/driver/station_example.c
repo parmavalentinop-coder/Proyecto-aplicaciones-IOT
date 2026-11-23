@@ -22,6 +22,7 @@ static const char *TAG_wifi = "WIFI_STA";
 
 static int s_retry_num = 0;
 
+extern void notify_wifi_disconnected(void);
 
 /* Manejador de eventos WiFi */
 static void event_handler(void *arg,
@@ -44,10 +45,12 @@ static void event_handler(void *arg,
             ESP_LOGE(TAG_wifi, "No se pudo conectar al router");
 
             xEventGroupSetBits(
-                s_wifi_event_group,
-                WIFI_FAIL_BIT
-            );
-        }
+            s_wifi_event_group,
+            WIFI_FAIL_BIT
+    );
+
+    notify_wifi_disconnected();
+}
     }
 
     else if (event_base == IP_EVENT &&
