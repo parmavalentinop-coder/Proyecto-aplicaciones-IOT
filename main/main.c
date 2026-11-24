@@ -23,6 +23,10 @@
 /*Sensor de temperatura*/
 #define DS18B20_GPIO 15
 
+/*mqtt*/
+#include "driver/mqtt_client.c"
+
+
 /*Tiempo que tarda el sensor en leer*/
 #define DS18B20_READ_INTERVAL_MS 2000
 
@@ -42,6 +46,12 @@ static EventGroupHandle_t wifi_event_group = NULL;
 /* Credenciales recibidas desde el formulario */
 char wifi_ssid[32];
 char wifi_password[64];
+
+/*tarea para leer sensor y le paso el pin y tiempo como parametros*/
+static void ds18b20_task(void *pvParameters)
+{
+    ds18b20_example_run(15, 2000);
+}
 
 /* Notificar que llegaron las credenciales */
 void notify_wifi_credentials(const char *ssid, const char *password)
@@ -101,7 +111,12 @@ void start_wifi_configuration(void)
     );
 
     /* Intentar conectar con las nuevas credenciales */
-    wifi_init_sta(wifi_password, wifi_ssid);
+    if (wifi_init_sta(wifi_password, wifi_ssid) == ESP_OK) {
+    ESP_LOGI(TAG, "WiFi conectado correctamente");
+
+    mqtt_client_start();
+    }
+    
 }
 
 
@@ -129,6 +144,17 @@ void app_main(void)
         ESP_LOGE("MAIN", "Error al crear grupo de eventos");
         return;
     }
+    
+    
+    /*Leer sensor*/
+        xTaskCreate(
+        ds18b20_task,
+        "ds18b20_task",
+        4096,
+        NULL,
+        5,
+        NULL
+        );
 
     /* Inicializar infraestructura WiFi */
     wifi_init_ap(WIFI_AP_SSID, WIFI_AP_PASSWORD);
@@ -137,6 +163,11 @@ void app_main(void)
         ESP_LOGI("MAIN", "Credenciales WiFi encontradas");
 
         err = wifi_init_sta(wifi_password, wifi_ssid);
+        
+        if (err == ESP_OK) {
+        ESP_LOGI("MAIN", "WiFi conectado correctamente");
+        mqtt_client_start();
+        }
     } else {
         ESP_LOGI("MAIN", "No hay credenciales WiFi guardadas");
         err = ESP_FAIL;
@@ -171,4 +202,6 @@ void app_main(void)
             start_wifi_configuration();
         }
     }
+
+    
 }

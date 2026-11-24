@@ -1,94 +1,110 @@
-#include <string.h>
-#include "nvs.h"
-#include "esp_err.h"
+#include <stdio.h>
+#include <stdbool.h>
 #include "esp_log.h"
+#include "mqtt_client.h"
 
-static const char *TAG = "WIFI_STORAGE";
+static const char *TAG_MQTT = "MQTT_CLIENT";
 
-/*
- * Guarda las credenciales WiFi en NVS.
- */
-esp_err_t wifi_credentials_save(const char *ssid, const char *password)
+static esp_mqtt_client_handle_t mqtt_client = NULL;
+static bool mqtt_connected = false;
+
+// Certificado del broker Mosquitto
+extern const uint8_t mosquitto_crt_start[] asm("_binary_mosquitto_org_crt_start");
+extern const uint8_t mosquitto_crt_end[] asm("_binary_mosquitto_org_crt_end");
+
+// Manejador de eventos MQTT
+static void mqtt_event_handler(void *handler_args,
+                               esp_event_base_t base,
+                               int32_t event_id,
+                               void *event_data)
 {
-    nvs_handle_t nvs_handle;
-    esp_err_t err;
+    esp_mqtt_event_handle_t event = event_data;
 
-    // Abrir espacio de almacenamiento
-    err = nvs_open("wifi_cfg", NVS_READWRITE, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error al abrir NVS: %s", esp_err_to_name(err));
-        return err;
+    switch ((esp_mqtt_event_id_t)event_id) {
+
+        case MQTT_EVENT_CONNECTED:
+            mqtt_connected = true;
+            ESP_LOGI(TAG_MQTT, "Conectado al broker MQTT");
+
+            esp_mqtt_client_subscribe(
+                event->client,
+                "esp32/domotica/prueba",
+                0
+            );
+
+            ESP_LOGI(TAG_MQTT, "Suscripcion realizada");
+            break;
+
+        case MQTT_EVENT_DISCONNECTED:
+            mqtt_connected = false;
+            ESP_LOGW(TAG_MQTT, "Desconectado del broker MQTT");
+            break;
+
+        case MQTT_EVENT_PUBLISHED:
+            ESP_LOGI(TAG_MQTT, "Mensaje publicado. ID: %d", event->msg_id);
+            break;
+
+        case MQTT_EVENT_ERROR:
+            ESP_LOGE(TAG_MQTT, "Error en la conexion MQTT");
+            break;
+
+        default:
+            break;
     }
-
-    // Guardar SSID
-    err = nvs_set_str(nvs_handle, "ssid", ssid);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error al guardar SSID");
-        nvs_close(nvs_handle);
-        return err;
-    }
-
-    // Guardar contraseña
-    err = nvs_set_str(nvs_handle, "password", password);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error al guardar password");
-        nvs_close(nvs_handle);
-        return err;
-    }
-
-    // Confirmar los cambios
-    err = nvs_commit(nvs_handle);
-
-    nvs_close(nvs_handle);
-
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Credenciales WiFi guardadas correctamente");
-    } else {
-        ESP_LOGE(TAG, "Error al confirmar los cambios en NVS");
-    }
-
-    return err;
 }
 
-/*
- * Recupera las credenciales WiFi almacenadas en NVS.
- */
-esp_err_t wifi_credentials_load(
-    char *ssid,
-    size_t ssid_size,
-    char *password,
-    size_t password_size)
+// Inicializa y conecta el cliente MQTT
+void mqtt_client_start(void)
 {
-    nvs_handle_t nvs_handle;
-    esp_err_t err;
+    const esp_mqtt_client_config_t mqtt_cfg = {
+        .broker.address.uri = "mqtts://test.mosquitto.org:8883",
+        .broker.verification.certificate = (const char *)mosquitto_crt_start,
+    };
 
-    // Abrir espacio de almacenamiento
-    err = nvs_open("wifi_cfg", NVS_READONLY, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "No se pudieron abrir las credenciales: %s",
-                 esp_err_to_name(err));
-        return err;
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+
+    if (mqtt_client == NULL) {
+        ESP_LOGE(TAG_MQTT, "No se pudo inicializar el cliente MQTT");
+        return;
     }
 
-    // Recuperar SSID
-    err = nvs_get_str(nvs_handle, "ssid", ssid, &ssid_size);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error al recuperar SSID");
-        nvs_close(nvs_handle);
-        return err;
+    esp_mqtt_client_register_event(
+        mqtt_client,
+        ESP_EVENT_ANY_ID,
+        mqtt_event_handler,
+        NULL
+    );
+
+    esp_mqtt_client_start(mqtt_client);
+
+    ESP_LOGI(TAG_MQTT, "Cliente MQTT iniciado");
+}
+
+// Publica la temperatura del DS18B20
+void mqtt_client_publish_temperature(float temperature)
+{
+    if (mqtt_client == NULL || !mqtt_connected) {
+        ESP_LOGW(TAG_MQTT, "No se puede publicar: MQTT desconectado");
+        return;
     }
 
-    // Recuperar contraseña
-    err = nvs_get_str(nvs_handle, "password", password, &password_size);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error al recuperar password");
-        nvs_close(nvs_handle);
-        return err;
+    char message[32];
+
+    snprintf(message, sizeof(message),
+             "{\"temperatura\":%.2f}", temperature);
+
+    int msg_id = esp_mqtt_client_publish(
+        mqtt_client,
+        "esp32/temperatura",
+        message,
+        0,
+        1,
+        0
+    );
+
+    if (msg_id >= 0) {
+        ESP_LOGI(TAG_MQTT, "Temperatura publicada: %s", message);
+    } else {
+        ESP_LOGE(TAG_MQTT, "Error al publicar temperatura");
     }
-
-    nvs_close(nvs_handle);
-
-    ESP_LOGI(TAG, "Credenciales WiFi recuperadas correctamente");
-
-    return ESP_OK;
 }

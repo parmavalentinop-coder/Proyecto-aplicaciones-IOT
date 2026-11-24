@@ -91,8 +91,15 @@ static esp_err_t wifi_post_handler(httpd_req_t *req)
 }
 
 // Inicializacion del servidor HTTP
+// Inicializacion del servidor HTTP
 void start_web_server(void)
 {
+    /* Comprobar si el servidor ya esta iniciado */
+    if (server != NULL) {
+        ESP_LOGI(TAG_WEB_SERVER, "El servidor HTTP ya esta iniciado");
+        return;
+    }
+
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     ESP_LOGI(TAG_WEB_SERVER, "Iniciando servidor HTTP...");
@@ -108,7 +115,7 @@ void start_web_server(void)
 
         httpd_register_uri_handler(server, &root);
 
-                httpd_uri_t wifi = {
+        httpd_uri_t wifi = {
             .uri       = "/wifi",
             .method    = HTTP_POST,
             .handler   = wifi_post_handler,
@@ -119,9 +126,9 @@ void start_web_server(void)
 
         ESP_LOGI(TAG_WEB_SERVER, "Servidor HTTP iniciado");
         ESP_LOGI(TAG_WEB_SERVER, "Accede al formulario desde: http://192.168.4.1");
+
+    } else {
+        ESP_LOGE(TAG_WEB_SERVER, "Error al iniciar servidor HTTP");
+        server = NULL;
     }
-    else {
-        ESP_LOGE(TAG, "Error al iniciar servidor HTTP");
-    }
-    
 }

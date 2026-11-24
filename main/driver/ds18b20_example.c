@@ -1,8 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2022-2025 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
 
 #include <stdio.h>
 #include "esp_log.h"
@@ -12,7 +7,10 @@
 #include "ds18b20.h"
 
 
+
 #define EXAMPLE_ONEWIRE_MAX_DS18B20 2
+
+extern void mqtt_client_publish_temperature(float temperature);
 
 static const char *TAG_sensor = "example";
 
@@ -72,6 +70,7 @@ void ds18b20_example_run(int gpio_num, int sensor_readTemp)
         for (int i = 0; i < ds18b20_device_num; i ++) {
             ESP_ERROR_CHECK(ds18b20_get_temperature(ds18b20s[i], &temperature));
             ESP_LOGI(TAG_sensor, "temperature read from DS18B20[%d]: %.2fC", i, temperature);
+            mqtt_client_publish_temperature(temperature);
         }
     }
 }
