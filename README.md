@@ -43,8 +43,6 @@ montaje físico antes de poner el sistema en funcionamiento.
 -   Herramientas de compilación y Python instaladas mediante el
     instalador de ESP-IDF.
 -   Controlador USB correspondiente al conversor USB-UART de la placa.
--   Un cliente MQTT, por ejemplo MQTTX, para comprobar los mensajes
-    publicados.
 -   Acceso a una red Wi-Fi de 2,4 GHz.
 
 ## Estructura del proyecto
@@ -72,8 +70,6 @@ proyecto/
 └── README.md
 ```
 
-Los nombres y la organización deben coincidir con los archivos presentes
-en la versión del proyecto que se compile.
 
 ## Compilación y carga
 
@@ -162,76 +158,3 @@ El certificado de la autoridad certificante utilizado por el cliente
 MQTT se encuentra en `main/certs/mosquitto.org.crt` y se incorpora al
 firmware durante la compilación.
 
-> **Importante:** `test.mosquitto.org` es un broker público destinado a
-> pruebas. Los tópicos pueden ser accesibles por otros usuarios y no
-> debe utilizarse para transmitir información privada ni como
-> infraestructura de producción.
-
-## Solución de problemas
-
-### El ESP32 no detecta el DS18B20
-
--   Comprobar que DATA esté conectado al GPIO 15.
--   Verificar alimentación, masa común y orientación de los terminales
-    del sensor.
--   Comprobar que exista una resistencia pull-up entre DATA y 3.3 V.
--   Revisar el monitor serie para identificar errores del bus 1-Wire.
-
-### No aparece la red `ESP32_AP`
-
--   Reiniciar la placa y observar el monitor serie.
--   Verificar que el firmware haya iniciado el modo de configuración
-    Wi-Fi.
--   Comprobar que no haya quedado activa una conexión STA con
-    credenciales guardadas.
-
-### No se conecta al router
-
--   Verificar SSID y contraseña.
--   Comprobar que la red sea compatible con la conexión Wi-Fi del ESP32
-    (2,4 GHz).
--   Esperar a que se completen los reintentos y comprobar si vuelve a
-    aparecer `ESP32_AP`.
-
-### No llegan mensajes MQTT
-
--   Comprobar que el ESP32 esté conectado al router.
--   Verificar la disponibilidad del broker y el puerto TLS `8883`.
--   Comprobar que el cliente MQTT esté suscripto al tópico exacto.
--   Revisar los mensajes del monitor serie y la configuración del
-    certificado.
-
-## Módulos principales
-
-  -----------------------------------------------------------------------
-  Archivo                             Responsabilidad
-  ----------------------------------- -----------------------------------
-  `main.c`                            Inicialización y coordinación
-                                      general del sistema.
-
-  `accesPoint.c`                      Creación y administración del punto
-                                      de acceso de configuración.
-
-  `station_example.c`                 Conexión Wi-Fi en modo estación y
-                                      gestión de reintentos.
-
-  `wifi_storage.c`                    Guardado y recuperación de
-                                      credenciales mediante NVS.
-
-  `wifi_web_server.c`                 Servidor HTTP y recepción de
-                                      credenciales desde la página web.
-
-  `ds18b20_example.c`                 Inicialización del bus 1-Wire y
-                                      lectura del DS18B20.
-
-  `mqtt_client.c`                     Conexión MQTT segura y publicación
-                                      de las mediciones.
-  -----------------------------------------------------------------------
-
-## Estado y consideraciones
-
-Este README describe la configuración de desarrollo y prueba del
-proyecto. Antes de una instalación definitiva, verificar el
-funcionamiento físico del sensor y su resistencia pull-up, revisar los
-parámetros de conexión y reemplazar el broker público por una
-infraestructura MQTT propia si se requiere un uso real.
