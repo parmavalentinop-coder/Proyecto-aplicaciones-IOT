@@ -51,6 +51,9 @@ char wifi_password[64];
 static void ds18b20_task(void *pvParameters)
 {
     ds18b20_example_run(15, 2000);
+
+    // Finalizar la tarea correctamente si la funcion termina
+    vTaskDelete(NULL);
 }
 
 /* Notificar que llegaron las credenciales */

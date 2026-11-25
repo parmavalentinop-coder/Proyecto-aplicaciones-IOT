@@ -4,39 +4,97 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configuración Wi-Fi</title>
+
+    <link rel="stylesheet" href="/index.css">
 </head>
 
 <body>
 
-    <h1>Configuración Wi-Fi</h1>
-    <p>Ingresá las credenciales de tu red para conectar el dispositivo.</p>
+    <div class="container">
 
-    <form action="/wifi" method="POST">
+        <div class="header">
+            <div class="icon">📶</div>
+            <h1>Configuración Wi-Fi</h1>
+            <p>Ingresa las credenciales de una red Wi-Fi para comenzar.</p>
+        </div>
 
-        <label for="ssid">Nombre de la red:</label>
-        <input
-            type="text"
-            id="ssid"
-            name="ssid"
-            placeholder="Nombre de Wi-Fi"
-            required
-        >
+        <form id="wifiForm">
 
-        <br><br>
+            <div class="form-group">
+                <label for="ssid">Nombre de la red</label>
+                <input
+                    type="text"
+                    id="ssid"
+                    name="ssid"
+                    placeholder="Ingresá el nombre de Wi-Fi"
+                    required
+                >
+            </div>
 
-        <label for="password">Contraseña:</label>
-        <input
-            type="password"
-            id="password"
-            name="password"
-            placeholder="Contraseña de Wi-Fi"
-        >
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Ingresá la contraseña"
+                >
+            </div>
 
-        <br><br>
+            <button type="submit" id="connectButton">
+                Conectar dispositivo
+            </button>
 
-        <button type="submit">Conectar</button>
+        </form>
 
-    </form>
+        <div id="status" class="status"></div>
+
+        <div class="footer">
+            Lector de sensor y envio por MQTT
+        </div>
+
+    </div>
+
+    <script>
+        const wifiForm = document.getElementById("wifiForm");
+        const statusDiv = document.getElementById("status");
+        const connectButton = document.getElementById("connectButton");
+
+        wifiForm.addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            const formData = new URLSearchParams();
+
+            formData.append("ssid", document.getElementById("ssid").value);
+            formData.append("password", document.getElementById("password").value);
+
+            statusDiv.className = "status loading";
+            statusDiv.textContent = "Enviando credenciales...";
+            connectButton.disabled = true;
+
+            try {
+                const response = await fetch("/wifi", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error("Error al enviar las credenciales");
+                }
+
+                statusDiv.className = "status success";
+                statusDiv.textContent = "Credenciales guardadas. Iniciando conexión Wi-Fi...";
+
+            } catch (error) {
+                statusDiv.className = "status error";
+                statusDiv.textContent = "Error al enviar las credenciales. Intentá nuevamente.";
+                connectButton.disabled = false;
+            }
+        });
+    </script>
 
 </body>
 </html>

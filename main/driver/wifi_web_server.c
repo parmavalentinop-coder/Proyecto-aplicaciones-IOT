@@ -20,6 +20,13 @@ static const char *TAG_WEB_SERVER = "WEB_SERVER";
 
 static httpd_handle_t server = NULL;
 
+// Archivo CSS embebido
+extern const uint8_t index_css_start[]
+    asm("_binary_index_css_start");
+
+extern const uint8_t index_css_end[]
+    asm("_binary_index_css_end");
+
 
 // Manejador de la pagina principal
 static esp_err_t root_get_handler(httpd_req_t *req)
@@ -32,6 +39,20 @@ static esp_err_t root_get_handler(httpd_req_t *req)
         req,
         (const char *)index_html_start,
         index_html_end - index_html_start
+    );
+}
+
+// Manejador del archivo CSS
+static esp_err_t css_get_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG_WEB_SERVER, "Solicitud GET recibida en /style.css");
+
+    httpd_resp_set_type(req, "text/css");
+
+    return httpd_resp_send(
+        req,
+        (const char *)index_css_start,
+        index_css_end - index_css_start
     );
 }
 
@@ -74,7 +95,7 @@ static esp_err_t wifi_post_handler(httpd_req_t *req)
     esp_err_t err = wifi_credentials_save(ssid, password);
 
    if (err != ESP_OK) {
-    ESP_LOGE(TAG, "No se pudieron guardar las credenciales");
+    ESP_LOGE(TAG_WEB_SERVER, "No se pudieron guardar las credenciales");
 
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                         "Error al guardar las credenciales");
@@ -90,7 +111,6 @@ static esp_err_t wifi_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// Inicializacion del servidor HTTP
 // Inicializacion del servidor HTTP
 void start_web_server(void)
 {
@@ -123,6 +143,15 @@ void start_web_server(void)
         };
 
         httpd_register_uri_handler(server, &wifi);
+
+        httpd_uri_t css = {
+            .uri       = "/index.css",
+            .method    = HTTP_GET,
+            .handler   = css_get_handler,
+            .user_ctx  = NULL
+        };
+
+httpd_register_uri_handler(server, &css);
 
         ESP_LOGI(TAG_WEB_SERVER, "Servidor HTTP iniciado");
         ESP_LOGI(TAG_WEB_SERVER, "Accede al formulario desde: http://192.168.4.1");

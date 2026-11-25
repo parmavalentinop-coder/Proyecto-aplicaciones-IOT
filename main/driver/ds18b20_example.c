@@ -45,7 +45,8 @@ void ds18b20_example_run(int gpio_num, int sensor_readTemp)
             ds18b20_config_t ds_cfg = {};
             onewire_device_address_t address;
             // check if the device is a DS18B20, if so, return the ds18b20 handle
-            if (ds18b20_new_device_from_enumeration(&next_onewire_device, &ds_cfg, &ds18b20s[ds18b20_device_num]) == ESP_OK) {
+            if (ds18b20_new_device_from_enumeration(&next_onewire_device, &ds_cfg, &ds18b20s[ds18b20_device_num]) == ESP_OK) 
+            {
                 ds18b20_get_device_address(ds18b20s[ds18b20_device_num], &address);
                 ESP_LOGI(TAG_sensor, "Found a DS18B20[%d], address: %016llX", ds18b20_device_num, address);
                 ds18b20_device_num++;
@@ -53,7 +54,8 @@ void ds18b20_example_run(int gpio_num, int sensor_readTemp)
                     ESP_LOGI(TAG_sensor, "Max DS18B20 number reached, stop searching...");
                     break;
                 }
-            } else {
+            } 
+            else {
                 ESP_LOGI(TAG_sensor, "Found an unknown device, address: %016llX", next_onewire_device.address);
             }
         }
@@ -61,15 +63,24 @@ void ds18b20_example_run(int gpio_num, int sensor_readTemp)
     ESP_ERROR_CHECK(onewire_del_device_iter(iter));
     ESP_LOGI(TAG_sensor, "Searching done, %d DS18B20 device(s) found", ds18b20_device_num);
 
+        if (ds18b20_device_num == 0) {
+        ESP_LOGE(TAG_sensor, "No se detectaron sensores DS18B20");
+        return;
+    }
+
     float temperature;
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(sensor_readTemp));
 
-        // trigger temperature conversion for all sensors on the bus
+        // Iniciar conversion de temperatura
         ESP_ERROR_CHECK(ds18b20_trigger_temperature_conversion_for_all(bus));
-        for (int i = 0; i < ds18b20_device_num; i ++) {
+
+        for (int i = 0; i < ds18b20_device_num; i++) {
             ESP_ERROR_CHECK(ds18b20_get_temperature(ds18b20s[i], &temperature));
+
             ESP_LOGI(TAG_sensor, "temperature read from DS18B20[%d]: %.2fC", i, temperature);
+
             mqtt_client_publish_temperature(temperature);
         }
     }
